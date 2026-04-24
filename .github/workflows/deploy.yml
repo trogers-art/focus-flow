@@ -8,23 +8,19 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    name: Deploy via FTP
+    name: Deploy via SFTP
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Deploy to IONOS via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      - name: Deploy to IONOS via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
           server: ${{ secrets.SFTP_HOST }}
           username: ${{ secrets.SFTP_USER }}
           password: ${{ secrets.SFTP_PASS }}
-          server-dir: ${{ secrets.SFTP_PATH }}
-          protocol: ftp
-          port: 21
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            README.md
+          local_path: './*'
+          remote_path: ${{ secrets.SFTP_PATH }}
+          sftp_only: true
+          delete_remote_files: false
