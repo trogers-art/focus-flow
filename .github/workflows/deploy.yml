@@ -8,25 +8,23 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    name: Deploy via SFTP
+    name: Deploy via FTP
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Deploy to IONOS via SFTP
+      - name: Deploy to IONOS via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.SFTP_HOST }}
           username: ${{ secrets.SFTP_USER }}
           password: ${{ secrets.SFTP_PASS }}
           server-dir: ${{ secrets.SFTP_PATH }}
-          protocol: ftps
+          protocol: ftp
           port: 21
-          # Only upload files that changed — faster deploys
           exclude: |
             **/.git*
             **/.git*/**
             **/node_modules/**
             README.md
-            server.js
