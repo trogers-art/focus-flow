@@ -1,13 +1,13 @@
 // js/modules-manager.js
 
 const MODULE_DEFS = [
-  { id: 'planner',   title: 'Daily Planner', icon: '📋', minW: 320, defaultPos: { x: 20,  y: 20  } },
-  { id: 'timer',     title: 'Focus Timer',   icon: '⏱',  minW: 240, defaultPos: { x: 360, y: 20  } },
-  { id: 'quote',     title: 'Inspiration',   icon: '✦',  minW: 270, defaultPos: { x: 620, y: 20  } },
-  { id: 'mood',      title: 'Mood Check',    icon: '🌿', minW: 230, defaultPos: { x: 20,  y: 380 } },
-  { id: 'audio',     title: 'Ambience',      icon: '♪',  minW: 260, defaultPos: { x: 270, y: 380 } },
-  { id: 'braindump', title: 'Brain Dump',    icon: '🧠', minW: 260, defaultPos: { x: 550, y: 380 } },
-  { id: 'focusword', title: 'Focus Word',    icon: '◈',  minW: 200, defaultPos: { x: 830, y: 20  } },
+  { id: 'planner',   title: 'Daily Planner', icon: '▦', minW: 320, defaultPos: { x: 16,  y: 16  } },
+  { id: 'timer',     title: 'Focus Timer',   icon: '◷', minW: 240, defaultPos: { x: 356, y: 16  } },
+  { id: 'quote',     title: 'Inspiration',   icon: '✦', minW: 270, defaultPos: { x: 614, y: 16  } },
+  { id: 'mood',      title: 'Mood Check',    icon: '◉', minW: 230, defaultPos: { x: 16,  y: 430 } },
+  { id: 'audio',     title: 'Ambience',      icon: '♪', minW: 260, defaultPos: { x: 264, y: 430 } },
+  { id: 'braindump', title: 'Brain Dump',    icon: '◈', minW: 260, defaultPos: { x: 542, y: 430 } },
+  { id: 'focusword', title: 'Focus Word',    icon: '◆', minW: 200, defaultPos: { x: 902, y: 16  } },
 ];
 
 const ModuleManager = (() => {
@@ -42,15 +42,11 @@ const ModuleManager = (() => {
     el.appendChild(body);
     stage.appendChild(el);
 
-    // Close button
     header.querySelector('.module-close').addEventListener('click', () => {
       setVisible(def.id, false);
     });
 
-    // Register with drag system
     Drag.make(el, header);
-
-    // Fill content
     fillBody(def.id, body);
 
     return el;
@@ -72,10 +68,8 @@ const ModuleManager = (() => {
     const el = document.getElementById('mod-' + id);
     if (el) el.style.display = visible ? 'block' : 'none';
     State.set('moduleVisible.' + id, visible);
-    // Update panel button
     const btn = document.getElementById('mpi-' + id);
     if (btn) btn.classList.toggle('on', visible);
-    // Re-separate after showing a new module
     if (visible) Drag.separateAll();
   }
 
@@ -97,8 +91,22 @@ const ModuleManager = (() => {
   }
 
   function init() {
-    MODULE_DEFS.forEach(createModule);
+    // If this is a fresh load with no saved positions, assign
+    // default positions that are guaranteed not to overlap.
+    const s = State.get();
+    const hasAnySaved = Object.keys(s.modulePositions).length > 0;
+
+    MODULE_DEFS.forEach(def => {
+      if (!hasAnySaved) {
+        // Force default positions — ignore anything stale in state
+        State.set('modulePositions.' + def.id, def.defaultPos);
+      }
+      createModule(def);
+    });
+
     buildList();
+
+    // After render, run separator to catch any edge cases
     Drag.separateAll();
   }
 

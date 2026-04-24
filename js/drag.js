@@ -1,19 +1,13 @@
 // js/drag.js
-// Collision-preventing drag. The dragged module cannot overlap any other.
-// Uses real getBoundingClientRect() for pixel-perfect detection.
+// Collision-preventing drag system.
+// During drag: module cannot overlap any other (real-time constraint).
+// On load: separateAll() spreads modules apart based on actual rendered sizes.
 
 const Drag = (() => {
   const TOPBAR_H = 52;
-  const GAP = 6; // minimum pixels between modules
+  const GAP = 10;
 
-  let active = null; // { el, ox, oy }
-
-  // ── rect helpers ─────────────────────────────────────────────
-
-  function rect(el) {
-    const r = el.getBoundingClientRect();
-    return { x: r.left, y: r.top, w: r.width, h: r.height };
-  }
+  let active = null;
 
   function overlaps(a, b) {
     return (
@@ -24,42 +18,33 @@ const Drag = (() => {
     );
   }
 
-  // ── constraint solver ────────────────────────────────────────
-  // Given where the user WANTS the module to be, return the
-  // nearest position that doesn't overlap any other module.
-
   function constrain(el, wantX, wantY) {
     const W = window.innerWidth;
     const H = window.innerHeight;
     const mw = el.offsetWidth;
     const mh = el.offsetHeight;
 
-    // Viewport clamp first
     let x = Math.max(0, Math.min(wantX, W - mw));
     let y = Math.max(TOPBAR_H, Math.min(wantY, H - mh));
 
-    // Collect all other visible modules
     const others = Array.from(document.querySelectorAll('.module'))
       .filter(m => m !== el && m.style.display !== 'none');
 
     if (others.length === 0) return { x, y };
 
-    // Iterative push-out: up to 30 rounds should always converge
     for (let round = 0; round < 30; round++) {
       const c = { x, y, w: mw, h: mh };
       let moved = false;
 
       for (const other of others) {
-        const o = rect(other);
+        const r = other.getBoundingClientRect();
+        const o = { x: r.left, y: r.top, w: r.width, h: r.height };
         if (!overlaps(c, o)) continue;
 
-        // How much do we penetrate in each axis/direction?
-        const pushRight = (o.x + o.w + GAP) - c.x;   // push us right
-        const pushLeft  = (c.x + c.w + GAP) - o.x;   // push us left
-        const pushDown  = (o.y + o.h + GAP) - c.y;   // push us down
-        const pushUp    = (c.y + c.h + GAP) - o.y;   // push us up
-
-        // Pick the smallest escape — least visual disruption
+        const pushRight = (o.x + o.w + GAP) - c.x;
+        const pushLeft  = (c.x + c.w + GAP) - o.x;
+        const pushDown  = (o.y + o.h + GAP) - c.y;
+        const pushUp    = (c.y + c.h + GAP) - o.y;
         const least = Math.min(pushRight, pushLeft, pushDown, pushUp);
 
         if      (least === pushRight) c.x += pushRight;
@@ -67,55 +52,40 @@ const Drag = (() => {
         else if (least === pushDown)  c.y += pushDown;
         else                          c.y -= pushUp;
 
-        // Re-clamp after each push
         c.x = Math.max(0, Math.min(c.x, W - mw));
         c.y = Math.max(TOPBAR_H, Math.min(c.y, H - mh));
         moved = true;
       }
 
-      x = c.x;
-      y = c.y;
-      if (!moved) break; // settled — no overlaps remain
+      x = c.x; y = c.y;
+      if (!moved) break;
     }
 
     return { x, y };
   }
 
-  // ── place a module at (x, y) and persist ─────────────────────
-
   function place(el, x, y) {
-    el.style.left = x + 'px';
-    el.style.top  = y + 'px';
+    el.style.left  = x + 'px';
+    el.style.top   = y + 'px';
     el.style.right = 'auto';
     State.set('modulePositions.' + el.dataset.mid, { x, y });
   }
 
-  // ── event handlers ───────────────────────────────────────────
-
-  function onMouseMove(e) {
+  document.addEventListener('mousemove', e => {
     if (!active) return;
-    const wantX = e.clientX - active.ox;
-    const wantY = e.clientY - active.oy;
-    const { x, y } = constrain(active.el, wantX, wantY);
+    const { x, y } = constrain(active.el, e.clientX - active.ox, e.clientY - active.oy);
     place(active.el, x, y);
-  }
+  });
 
-  function onMouseUp() {
+  document.addEventListener('mouseup', () => {
     if (!active) return;
     active.el.classList.remove('is-dragging');
     State.save();
     active = null;
-  }
-
-  // Attach global listeners once
-  document.addEventListener('mousemove', onMouseMove);
-  document.addEventListener('mouseup', onMouseUp);
-
-  // ── public API ───────────────────────────────────────────────
+  });
 
   function make(moduleEl, headerEl) {
     headerEl.addEventListener('mousedown', e => {
-      // Don't steal clicks from interactive children
       if (
         e.target.closest('button') ||
         e.target.tagName === 'INPUT' ||
@@ -124,58 +94,41 @@ const Drag = (() => {
       ) return;
 
       const r = moduleEl.getBoundingClientRect();
-      active = {
-        el: moduleEl,
-        ox: e.clientX - r.left,
-        oy: e.clientY - r.top,
-      };
-
+      active = { el: moduleEl, ox: e.clientX - r.left, oy: e.clientY - r.top };
       moduleEl.classList.add('is-dragging');
       moduleEl.style.zIndex = ++Drag.zTop;
       e.preventDefault();
     });
   }
 
-  // Separate all visible modules from each other (run after load / show)
+  // separateAll: uses getBoundingClientRect so sizes are always real.
+  // Waits 3 frames to ensure the browser has fully rendered everything.
   function separateAll() {
-    // Wait two frames so layout is complete and rects are real
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const mods = Array.from(document.querySelectorAll('.module'))
-        .filter(m => m.style.display !== 'none');
-
+    const run = () => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
       const W = window.innerWidth;
       const H = window.innerHeight;
 
-      // Sort top-left → bottom-right: top-left modules stay put
-      mods.sort((a, b) => {
-        const ra = a.getBoundingClientRect();
-        const rb = b.getBoundingClientRect();
-        return (ra.left + ra.top) - (rb.left + rb.top);
+      const mods = Array.from(document.querySelectorAll('.module'))
+        .filter(m => m.style.display !== 'none');
+
+      if (mods.length === 0) return;
+
+      // Build working set from real rendered rects
+      const rects = mods.map(m => {
+        const r = m.getBoundingClientRect();
+        return { el: m, x: r.left, y: r.top, w: r.width, h: r.height };
       });
 
+      // Sort top-left first — those keep their spots
+      rects.sort((a, b) => (a.x + a.y) - (b.x + b.y));
+
       let changed = true;
-      for (let round = 0; round < 40 && changed; round++) {
+      for (let round = 0; round < 50 && changed; round++) {
         changed = false;
-        for (let i = 1; i < mods.length; i++) {
-          const el = mods[i];
-          const mw = el.offsetWidth;
-          const mh = el.offsetHeight;
-          const c = {
-            x: parseFloat(el.style.left) || 0,
-            y: parseFloat(el.style.top)  || 0,
-            w: mw,
-            h: mh,
-          };
-
+        for (let i = 1; i < rects.length; i++) {
+          const c = rects[i];
           for (let j = 0; j < i; j++) {
-            const other = mods[j];
-            const o = {
-              x: parseFloat(other.style.left) || 0,
-              y: parseFloat(other.style.top)  || 0,
-              w: other.offsetWidth,
-              h: other.offsetHeight,
-            };
-
+            const o = rects[j];
             if (!overlaps(c, o)) continue;
 
             const pushRight = (o.x + o.w + GAP) - c.x;
@@ -189,20 +142,22 @@ const Drag = (() => {
             else if (least === pushDown)  c.y += pushDown;
             else                          c.y -= pushUp;
 
-            c.x = Math.max(0, Math.min(c.x, W - mw));
-            c.y = Math.max(TOPBAR_H, Math.min(c.y, H - mh));
+            c.x = Math.max(0, Math.min(c.x, W - c.w));
+            c.y = Math.max(TOPBAR_H, Math.min(c.y, H - c.h));
             changed = true;
           }
-
-          el.style.left  = c.x + 'px';
-          el.style.top   = c.y + 'px';
-          el.style.right = 'auto';
-          State.set('modulePositions.' + el.dataset.mid, { x: c.x, y: c.y });
         }
       }
 
+      // Apply final positions
+      rects.forEach(r => {
+        place(r.el, r.x, r.y);
+      });
+
       State.save();
-    }));
+    })));
+
+    run();
   }
 
   return { make, separateAll, zTop: 50 };
